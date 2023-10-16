@@ -11,8 +11,8 @@ import {
     Alert,
     BackHandler
 } from "react-native";
-import React, { useEffect, useState } from "react";
-import MapView, { Polygon, Marker } from "react-native-maps";
+import React, { useEffect, useRef, useState } from "react";
+import MapView, { Polygon, Marker, Polyline } from "react-native-maps";
 import { MapScreenStyles } from "./MapScreenStyles";
 import AreaNameInputModal from "./components/AreaNameInputModal";
 import Toast from "react-native-toast-message";
@@ -24,6 +24,7 @@ const MapScreen = () => {
     const [polygonData, setPolygonData] = useState<any>([]);
     const [polygonCoordinates, setPolygonCoordinates] = useState<any>([]);
     const [addedPolygonShow, setAddedPolygonShow] = useState<any>([]);
+    const [currentLine, setCurrentLine] = useState<any>([]);
 
     //Polygon Modal States
     const [polygonInputModal, setPolygonInputModal] = useState<any>(false);
@@ -35,6 +36,8 @@ const MapScreen = () => {
     //state which tell is user started drawing or not started 
     const [isStartedDrawing, setIsStartedDrawing] = useState<any>(false);
 
+    const mapRef = useRef(null);
+
     useEffect(() => {
         const backAction = () => {
             return true;
@@ -42,6 +45,24 @@ const MapScreen = () => {
         const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
         return () => backHandler.remove();
     }, []);
+
+    useEffect(() => {
+        if (addedPolygonShow.length !== 0) {
+            console.log("polygon", JSON.stringify(addedPolygonShow.polygon))
+            const firstItem = addedPolygonShow[0]; // Get the first item in the array
+            const targetLatitude = firstItem.polygon[0].latitude;
+            const targetLongitude = firstItem.polygon[0].longitude;
+            if (mapRef?.current) {//@ts-ignore
+                mapRef.current.animateToRegion({
+                    latitude: targetLatitude,
+                    longitude: targetLongitude,
+                    latitudeDelta: 0.0010,
+                    longitudeDelta: 0.0010
+                });
+            }
+        }
+
+    }, [addedPolygonShow])
 
     return (
         <View style={MapScreenStyles.container}>
@@ -54,13 +75,27 @@ const MapScreen = () => {
                     latitudeDelta: 0.0022,
                     longitudeDelta: 0.0021
                 }}
-                onPress={(e: any) => {
+                scrollEnabled={!isStartedDrawing}
+                zoomEnabled={!isStartedDrawing}
+                ref={mapRef}
+                onPanDrag={(e: any) => {
                     if (isStartedDrawing) {
                         const newCoordinate = e.nativeEvent.coordinate;
-                        setPolygonCoordinates([...polygonCoordinates, newCoordinate]);
+                        setCurrentLine([...currentLine, newCoordinate]);
                     }
                 }}
+                onTouchEnd={() => {
+                    setPolygonCoordinates(currentLine)
+                    setCurrentLine([])
+                }}
             >
+
+                {currentLine.length > 1 && (
+                    <Polyline
+                        coordinates={currentLine}
+                        strokeColor="blue"
+                        strokeWidth={3}
+                    />)}
                 {polygonCoordinates.length !== 0 && (
                     <Polygon
                         coordinates={polygonCoordinates}
@@ -80,6 +115,7 @@ const MapScreen = () => {
                     />
                 ))}
                 {addedPolygonShow.length !== 0 && addedPolygonShow.map((item: any, index: any) => (
+
                     < Marker
                         coordinate={{
                             latitude: item.polygon[0].latitude,
@@ -93,29 +129,36 @@ const MapScreen = () => {
 
             </MapView>
 
-            {
-                !isStartedDrawing ?
-                    <TouchableOpacity
-                        style={MapScreenStyles.showAreaButton}
-                        onPress={() => {
-                            console.log("Psdada", addedPolygonShow.length)
-                            if (addedPolygonShow.length !== 0) {
-                                setAddedPolygonShow([])
-                            } else {
-                                setPolygonDataShowModal(true);
-                            }
-                        }}
-                    >
-                        <Text style={MapScreenStyles.buttonText}>{addedPolygonShow.length !== 0 ? "Cancel" : "Show Area List"}</Text>
-                    </TouchableOpacity> : null
-            }
+
+            <TouchableOpacity
+                style={MapScreenStyles.showAreaButton}
+                onPress={() => {
+                    console.log("Psdada", addedPolygonShow.length)
+                    if (addedPolygonShow.length !== 0 || polygonCoordinates.length !== 0 || isStartedDrawing) {
+                        setAddedPolygonShow([])
+                        setPolygonCoordinates([])
+                        setIsStartedDrawing(false)
+                    } else {
+                        setPolygonDataShowModal(true);
+                    }
+                }}
+            >
+                <Text style={MapScreenStyles.buttonText}>{addedPolygonShow.length !== 0 || polygonCoordinates.length !== 0 || isStartedDrawing ? "Cancel" : "Show Area List"}</Text>
+            </TouchableOpacity>
 
             {
                 isStartedDrawing && (
                     <TouchableOpacity
                         style={MapScreenStyles.finishButtonContainer}
                         onPress={() => {
-                            setPolygonInputModal(true);
+                            if (polygonCoordinates.length !== 0) {
+                                setPolygonInputModal(true);
+                            } else {
+                                Toast.show({
+                                    type: 'success',
+                                    text1: "Havent draw any thing yet"
+                                })
+                            }
                         }}
                     >
                         <Text style={MapScreenStyles.buttonText}>Finish</Text>
